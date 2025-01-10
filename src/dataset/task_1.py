@@ -1,6 +1,8 @@
 import os
 import json
+import torch
 from tqdm import tqdm
+from torch.utils.data import Dataset
 
 from src.setting import (
     TASK_1_DATA_ROOT,
@@ -34,3 +36,33 @@ def process_task_1_data():
         "w", encoding="utf-8"), ensure_ascii=False,
     )
     return
+
+class DatasetTaskV1(Dataset):
+    def __init__(self, file_path, vocab_path, max_length=512):
+        with open(vocab_path, "r", encoding="utf-8") as f:
+            self.vocab = json.load(f)
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            self.data = f.read().split("\n")
+            self.data = [x for x in self.data if x.strip() and len(x.strip()) <= 64]
+            self.data = [x for x in self.data if len(x.strip()) >= 16]
+
+        self.max_length = max_length
+        return
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        text = self.data[idx]
+        tokens = [self.vocab.get(char, self.vocab["<unk>"]) for char in text]
+
+        if len(tokens) > self.max_length - 1:
+            tokens = tokens[:self.max_length-1]
+
+        tokens = tokens + [self.vocab["<pad>"]] * (self.max_length - len(tokens))
+
+        x = torch.tensor(tokens[:-1])
+        y = torch.tensor(tokens[1:])
+
+        return x, y

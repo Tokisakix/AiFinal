@@ -1,7 +1,9 @@
 import os
 import json
+import torch
 import pandas as pd
 from sklearn.utils import shuffle
+from torch.utils.data import Dataset
 
 from src.setting import (
     SEED,
@@ -53,3 +55,29 @@ def process_task_2_data():
         "w", encoding="utf-8"), ensure_ascii=False,
     )
     return
+
+class DatasetTaskV2(Dataset):
+    def __init__(self, csv_file, vocab_path, max_length=512):
+        with open(vocab_path, "r", encoding="utf-8") as f:
+            self.vocab = json.load(f)
+        self.data = pd.read_csv(csv_file, dtype={"review": str, "label": int})
+        self.data["review"] = self.data["review"].fillna("")
+        self.max_length = max_length
+        return
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        text = self.data.loc[idx, "review"]
+        label = self.data.loc[idx, "label"]
+        if not isinstance(text, str):
+            text = str(text)
+        tokens = [self.vocab.get(char, self.vocab["<unk>"]) for char in text]
+        if len(tokens) > self.max_length:
+            tokens = tokens[:self.max_length]
+        else:
+            tokens += [self.vocab["<pad>"]] * (self.max_length - len(tokens))
+        input_ids = torch.tensor(tokens)
+        label = torch.tensor(label, dtype=torch.float)
+        return input_ids, label

@@ -6,13 +6,19 @@ from sklearn.utils import shuffle
 from torch.utils.data import Dataset
 
 from src.setting import (
-    SEED,
+    SEED, OUTPUT_ROOT,
     TASK_1_OUTPUT_ROOT,
     TASK_2_DATA_ROOT,
     TASK_2_OUTPUT_ROOT,
 )
 
 def process_task_2_data():
+    if os.path.isfile(os.path.join(TASK_2_OUTPUT_ROOT, ".built")):
+        return
+    for output_path in [OUTPUT_ROOT, TASK_2_OUTPUT_ROOT]:
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+
     with open(os.path.join(TASK_1_OUTPUT_ROOT, "token2idx.json"), "r", encoding="utf-8") as f:
         token2idx = json.load(f)
 
@@ -54,6 +60,7 @@ def process_task_2_data():
         idx2token, open(os.path.join(TASK_2_OUTPUT_ROOT, "idx2token.json"),
         "w", encoding="utf-8"), ensure_ascii=False,
     )
+    open(os.path.join(TASK_2_OUTPUT_ROOT, ".built"), "w", encoding="utf-8")
     return
 
 class DatasetTaskV2(Dataset):

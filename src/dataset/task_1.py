@@ -5,16 +5,23 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 
 from src.setting import (
+    OUTPUT_ROOT,
     TASK_1_DATA_ROOT,
     TASK_1_OUTPUT_ROOT,
 )
 
 def process_task_1_data():
+    if os.path.isfile(os.path.join(TASK_1_OUTPUT_ROOT, ".built")):
+        return
+    for output_path in [OUTPUT_ROOT, TASK_1_OUTPUT_ROOT]:
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+
     data_file = os.path.join(TASK_1_DATA_ROOT, "train.txt")
     with open(data_file, "r", encoding="utf-8") as f:
         raw_data = f.read()
 
-    sentences = [line.strip() for line in tqdm(raw_data.split("\n")) if line.strip()]
+    sentences = [line.strip() for line in raw_data.split("\n") if line.strip()]
     vocab = set("".join(sentences))
 
     token2idx = {
@@ -35,6 +42,7 @@ def process_task_1_data():
         idx2token, open(os.path.join(TASK_1_OUTPUT_ROOT, "idx2token.json"),
         "w", encoding="utf-8"), ensure_ascii=False,
     )
+    open(os.path.join(TASK_1_OUTPUT_ROOT, ".built"), "w", encoding="utf-8")
     return
 
 class DatasetTaskV1(Dataset):

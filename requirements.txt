@@ -23,7 +23,10 @@ nvidia-nccl-cu12==2.20.5
 nvidia-nvjitlink-cu12==12.4.99
 nvidia-nvtx-cu12==12.4.99
 packaging==24.2
+pandas==2.2.3
 pillow==10.2.0
+python-dateutil==2.9.0.post0
+pytz==2024.2
 PyYAML==6.0.2
 regex==2024.11.6
 requests==2.32.3
@@ -31,6 +34,7 @@ safetensors==0.5.2
 scikit-learn==1.6.1
 scipy==1.15.0
 setuptools==75.1.0
+six==1.17.0
 sympy==1.13.1
 threadpoolctl==3.5.0
 tokenizers==0.21.0
@@ -41,5 +45,6 @@ tqdm==4.67.1
 transformers==4.48.0
 triton==3.0.0
 typing_extensions==4.9.0
+tzdata==2024.2
 urllib3==2.3.0
 wheel==0.44.0

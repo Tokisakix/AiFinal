@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 
 from src.dataset import process_task_1_data, DatasetTaskV1
@@ -29,7 +30,7 @@ def train_model(model, train_loader, optimizer, criterion, device, num_epochs, s
     model.train()
     for epoch in range(start_epoch, num_epochs):
         total_loss = 0
-        for batch_idx, (x, y) in enumerate(train_loader):
+        for x, y in tqdm(train_loader):
             x, y = x.to(device), y.to(device)
 
             optimizer.zero_grad()
@@ -40,11 +41,8 @@ def train_model(model, train_loader, optimizer, criterion, device, num_epochs, s
 
             total_loss += loss.item()
 
-            if batch_idx % 100 == 0:
-                print(f"Epoch: {epoch}, Batch: {batch_idx} / {len(train_loader)}, Loss: {loss.item():.4f}")
-
         avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
+        print(f"[+] Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
 
         checkpoint_name = f"epoch_{epoch+1}-loss_{avg_loss:.4f}.pt"
         checkpoint_path = os.path.join(save_dir, checkpoint_name)
@@ -62,7 +60,7 @@ def train_model(model, train_loader, optimizer, criterion, device, num_epochs, s
             os.remove(oldest_checkpoint)
         return
 
-def train_task_1():
+def train_task_1(nproc, nodes, node_rank, master_addr, master_port):
     process_task_1_data()
     dataset = DatasetTaskV1(
         os.path.join(TASK_1_DATA_ROOT, "train.txt"),
@@ -97,7 +95,7 @@ def train_task_1():
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint["epoch"] + 1
-        print(f"Resuming training from epoch {start_epoch}")
+        print(f"[+] Resuming training from epoch {start_epoch}")
     else:
         start_epoch = 0
 

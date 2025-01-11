@@ -1,5 +1,2 @@
-def train_task_1():
-    raise NotADirectoryError
-
-def train_task_2():
-    raise NotADirectoryError
+from .task_1 import train_task_1
+from .task_2 import train_task_2

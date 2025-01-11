@@ -67,7 +67,7 @@ def train_model(rank, model, train_loader, test_loader, optimizer, criterion, de
         train_loss = 0
         correct = 0
         total = 0
-        for x, y in tqdm(enumerate(train_loader)):
+        for x, y in tqdm(train_loader):
             x, y = x.to(device), y.to(device)
             outputs = model(x)
             pooled_output = torch.mean(outputs, dim=1)
@@ -102,20 +102,19 @@ def train_model(rank, model, train_loader, test_loader, optimizer, criterion, de
     return
 
 def load_pretrained_model(model, checkpoint_path, device):
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    pretrained_dict = checkpoint["model_state_dict"]
+    pretrained_dict = torch.load(checkpoint_path, map_location=device)
     model_dict = model.state_dict()
-    pretrained_embed = pretrained_dict["embedding.weight"]
-    current_embed = model_dict["embedding.weight"]
+    pretrained_embed = pretrained_dict["module.embedding.weight"]
+    current_embed = model_dict["module.embedding.weight"]
     current_embed[:pretrained_embed.size(0)] = pretrained_embed
-    pretrained_out_w = pretrained_dict["out.weight"]
-    pretrained_out_b = pretrained_dict["out.bias"]
-    current_out_w = model_dict["out.weight"]
-    current_out_b = model_dict["out.bias"]
+    pretrained_out_w = pretrained_dict["module.out.weight"]
+    pretrained_out_b = pretrained_dict["module.out.bias"]
+    current_out_w = model_dict["module.out.weight"]
+    current_out_b = model_dict["module.out.bias"]
     current_out_w[:pretrained_out_w.size(0)] = pretrained_out_w
     current_out_b[:pretrained_out_b.size(0)] = pretrained_out_b
     for name, param in pretrained_dict.items():
-        if name not in ["embedding.weight", "out.weight", "out.bias"]:
+        if name not in ["module.embedding.weight", "module.out.weight", "module.out.bias"]:
             model_dict[name].copy_(param)
     model.load_state_dict(model_dict)
     return model
@@ -156,16 +155,16 @@ def run_train_task_2(rank, world_size, nodes, node_rank, master_addr, master_por
         DROPOUT
     ).to(device)
 
+    model = DDP(model, device_ids=[rank])
     model = load_pretrained_model(model, TASK_1_MODEL_PATH, device)
 
     model.classifier = nn.Sequential(
         nn.Dropout(0.5),
-        nn.Linear(model.out.out_features, 1)
+        nn.Linear(model.module.out.out_features, 1)
     ).to(device)
 
     freeze_parameters(model, freeze_type=TASK_2_FREEZE_TYPE)
 
-    model = DDP(model, device_ids=[rank])
 
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -174,7 +173,7 @@ def run_train_task_2(rank, world_size, nodes, node_rank, master_addr, master_por
     )
     criterion = nn.BCEWithLogitsLoss()
 
-    train_model(model, train_loader, test_loader, optimizer, criterion, device, TASK_2_NUM_EPOCHS, TASK_2_SAVE_ROOT)
+    train_model(rank, model, train_loader, test_loader, optimizer, criterion, device, TASK_2_NUM_EPOCHS, TASK_2_SAVE_ROOT)
 
     dist.destroy_process_group()
     return

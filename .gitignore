@@ -1,4 +1,5 @@
 .output/
-.checkpoints/
+.save/
+
 
 *.pyc

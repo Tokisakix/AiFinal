@@ -32,6 +32,7 @@ class Sampler:
         return probs
 
     def apply(self, probs: torch.FloatTensor) -> int:
+        probs = probs[0].cpu().numpy().tolist()
         probs = self._apply_temperature(probs)
         probs = self._apply_top_k(probs)
         probs = self._apply_top_p(probs)

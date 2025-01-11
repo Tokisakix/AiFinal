@@ -36,3 +36,12 @@ class GPTModel(nn.Module):
         x = x.transpose(0, 1)
 
         return self.out(x)
+    
+class GPTInferModel(nn.Module):
+    def __init__(self, vocab_size, d_model=256, n_heads=8, n_layers=6, d_ff=1024, dropout=0.1):
+        super().__init__()
+        self.module = GPTModel(vocab_size, d_model, n_heads, n_layers, d_ff, dropout)
+        return
+
+    def forward(self, x):
+        return self.module(x)

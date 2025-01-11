@@ -26,8 +26,8 @@ from src.setting import (
     DROPOUT,
 )
 
-def train_model(model, train_loader, optimizer, criterion, device, num_epochs, save_dir):
-    if not os.path.exists(save_dir):
+def train_model(rank, model, train_loader, optimizer, criterion, device, num_epochs, save_dir):
+    if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
     save_model_path_list = []
 
@@ -45,18 +45,19 @@ def train_model(model, train_loader, optimizer, criterion, device, num_epochs, s
 
             total_loss += loss.item()
 
-        avg_loss = total_loss / len(train_loader)
-        print(f"[+] Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
+        if rank == 0:
+            avg_loss = total_loss / len(train_loader)
+            print(f"[+] Epoch {epoch} completed. Average loss: {avg_loss:.4f}")
 
-        save_model_path = os.path.join(save_dir, f"model_{epoch}.pth")
-        torch.save(model.state_dict(), save_model_path)
-        save_model_path_list.append(save_model_path)
-        print(f"[+] Save model into {save_model_path}")
+            save_model_path = os.path.join(save_dir, f"model_{epoch}.pth")
+            torch.save(model.state_dict(), save_model_path)
+            save_model_path_list.append(save_model_path)
+            print(f"[+] Save model into {save_model_path}")
 
-        if len(save_model_path_list) > TASK_1_SAVE_MODEL_NUM:
-            remove_model_path = save_model_path_list.pop(0)
-            os.remove(remove_model_path)
-            print(f"[+] Remove {remove_model_path}")
+            if len(save_model_path_list) > TASK_1_SAVE_MODEL_NUM:
+                remove_model_path = save_model_path_list.pop(0)
+                os.remove(remove_model_path)
+                print(f"[+] Remove {remove_model_path}")
 
     return
 
@@ -97,7 +98,7 @@ def run_train_task_1(rank, world_size, nodes, node_rank, master_addr, master_por
     if not os.path.exists(TASK_1_SAVE_ROOT):
         os.makedirs(TASK_1_SAVE_ROOT)
 
-    train_model(model, train_loader, optimizer, criterion, device, TASK_1_NUM_EPOCHS, TASK_1_SAVE_ROOT)
+    train_model(rank, model, train_loader, optimizer, criterion, device, TASK_1_NUM_EPOCHS, TASK_1_SAVE_ROOT)
 
     dist.destroy_process_group()
     return

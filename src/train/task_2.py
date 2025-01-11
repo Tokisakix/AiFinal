@@ -57,8 +57,8 @@ def freeze_parameters(model, freeze_type="all"):
             param.requires_grad = True
     return
 
-def train_model(model, train_loader, test_loader, optimizer, criterion, device, num_epochs, save_dir):
-    if not os.path.exists(save_dir):
+def train_model(rank, model, train_loader, test_loader, optimizer, criterion, device, num_epochs, save_dir):
+    if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
     save_model_path_list = []
         
@@ -83,20 +83,21 @@ def train_model(model, train_loader, test_loader, optimizer, criterion, device, 
             predicted = (torch.sigmoid(pred) > 0.5).float()
             correct += (predicted.squeeze() == y).sum().item()
             
-        train_loss = train_loss / len(train_loader)
-        train_acc = 100 * correct / total
-        test_acc = evaluate_model(model, test_loader, device)
-        print(f"[+] Epoch {epoch} loss: {train_loss:.4f} Train Acc {train_acc:.2f}% Test Acc: {test_acc:.2f}%")
+        if rank == 0:
+            train_loss = train_loss / len(train_loader)
+            train_acc = 100 * correct / total
+            test_acc = evaluate_model(model, test_loader, device)
+            print(f"[+] Epoch {epoch} loss: {train_loss:.4f} Train Acc {train_acc:.2f}% Test Acc: {test_acc:.2f}%")
 
-        save_model_path = os.path.join(save_dir, f"model_{epoch}.pth")
-        torch.save(model.state_dict(), save_model_path)
-        save_model_path_list.append(save_model_path)
-        print(f"[+] Save model into {save_model_path}")
+            save_model_path = os.path.join(save_dir, f"model_{epoch}.pth")
+            torch.save(model.state_dict(), save_model_path)
+            save_model_path_list.append(save_model_path)
+            print(f"[+] Save model into {save_model_path}")
 
-        if len(save_model_path_list) > TASK_2_SAVE_MODEL_NUM:
-            remove_model_path = save_model_path_list.pop(0)
-            os.remove(remove_model_path)
-            print(f"[+] Remove {remove_model_path}")
+            if len(save_model_path_list) > TASK_2_SAVE_MODEL_NUM:
+                remove_model_path = save_model_path_list.pop(0)
+                os.remove(remove_model_path)
+                print(f"[+] Remove {remove_model_path}")
 
     return
 

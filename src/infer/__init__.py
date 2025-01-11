@@ -1,5 +1,2 @@
-def infer_task_1():
-    raise NotImplementedError
-
-def infer_task_2():
-    raise NotImplementedError
+from .inference import infer
+from .sampler import Sampler

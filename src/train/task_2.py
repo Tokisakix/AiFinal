@@ -145,7 +145,7 @@ def train_task_2():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GPTModel(len(vocab)).to(device)
-    model = load_pretrained_model(model, "checkpoints/best.pt", device)
+    model = load_pretrained_model(model, ".checkpoints/best.pt", device)
     model.classifier = nn.Sequential(
         nn.Dropout(0.5),
         nn.Linear(model.out.out_features, 1)

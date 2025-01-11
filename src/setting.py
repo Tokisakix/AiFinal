@@ -3,7 +3,7 @@ import os
 # Path setting
 DATA_ROOT   = "data/"
 OUTPUT_ROOT = ".output/"
-SAVE_ROOT   = ".checkpoints/"
+SAVE_ROOT   = ".save/"
 
 SEED = 22331109
 
@@ -11,20 +11,24 @@ SEED = 22331109
 TASK_1_DATA_ROOT   = os.path.join(DATA_ROOT, "task_1")
 TASK_1_OUTPUT_ROOT = os.path.join(OUTPUT_ROOT, "task_1")
 TASK_1_SAVE_ROOT   = os.path.join(SAVE_ROOT, "task_1")
+TASK_1_MODEL_PATH  = os.path.join(SAVE_ROOT, "task_1.pth")
 
-TASK_1_BATCH_SIZE    = 32
-TASK_1_LEARNING_RATE = 1e-4
-TASK_1_NUM_EPOCHS    = 50
+TASK_1_BATCH_SIZE     = 32
+TASK_1_LEARNING_RATE  = 1e-4
+TASK_1_NUM_EPOCHS     = 50
+TASK_1_SAVE_MODEL_NUM = 5
 
 # Task 2 setting
 TASK_2_DATA_ROOT   = os.path.join(DATA_ROOT, "task_2")
 TASK_2_OUTPUT_ROOT = os.path.join(OUTPUT_ROOT, "task_2")
 TASK_2_SAVE_ROOT   = os.path.join(SAVE_ROOT, "task_2")
+TASK_2_MODEL_PATH  = os.path.join(SAVE_ROOT, "task_2.pth")
 
-TASK_2_BATCH_SIZE    = 32
-TASK_2_LEARNING_RATE = 1e-5
-TASK_2_NUM_EPOCHS    = 20
-TASK_2_FREEZE_TYPE   = "all" # "all" or "last"
+TASK_2_BATCH_SIZE     = 32
+TASK_2_LEARNING_RATE  = 1e-5
+TASK_2_NUM_EPOCHS     = 20
+TASK_2_FREEZE_TYPE    = "all" # "all" or "last"
+TASK_2_SAVE_MODEL_NUM = 5
 
 # Model setting
 D_MODEL  = 256

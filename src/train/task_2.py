@@ -3,7 +3,11 @@ import json
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from src.dataset import DatasetTaskV2
 from src.model import GPTModel
@@ -14,14 +18,21 @@ from src.setting import (
     TASK_2_LEARNING_RATE,
     TASK_2_NUM_EPOCHS,
     TASK_2_FREEZE_TYPE,
+    TASK_2_SAVE_MODEL_NUM,
+    TASK_1_MODEL_PATH,
+    D_MODEL,
+    N_HEADS,
+    N_LAYERS,
+    D_FF,
+    DROPOUT,
 )
 
-def evaluate_model(model, test_loader, device):
+def evaluate_model(model, dataloader, device):
     model.eval()
     correct = 0
     total = 0
     with torch.no_grad():
-        for x, y in test_loader:
+        for x, y in dataloader:
             x, y = x.to(device), y.to(device)
             outputs = model(x)
             pooled_output = torch.mean(outputs, dim=1)
@@ -30,7 +41,6 @@ def evaluate_model(model, test_loader, device):
             total += y.size(0)
             correct += (predicted.squeeze() == y).sum().item()
     accuracy = 100 * correct / total
-    print(f"[+] Accuracy on test set: {accuracy:.2f}%")
     return accuracy
 
 def freeze_parameters(model, freeze_type="all"):
@@ -47,62 +57,47 @@ def freeze_parameters(model, freeze_type="all"):
             param.requires_grad = True
     return
 
-def train_model(model, train_loader, test_loader, optimizer, criterion, device, num_epochs, save_dir, start_epoch, freeze_type):
+def train_model(model, train_loader, test_loader, optimizer, criterion, device, num_epochs, save_dir):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+    save_model_path_list = []
         
-    saved_checkpoints = []
-    checkpoint_files = [f for f in os.listdir(save_dir) if f.endswith(f"-{freeze_type}.pt")]
-    if checkpoint_files and start_epoch == 0:
-        latest_checkpoint = max(checkpoint_files, key=lambda x: int(x.split("_")[1].split("-")[0]))
-        checkpoint_path = os.path.join(save_dir, latest_checkpoint)
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        start_epoch = checkpoint["epoch"] + 1
-        print(f"[+] Resuming from epoch {start_epoch}")
     model.train()
-
-    for epoch in range(start_epoch, num_epochs):
-        total_loss = 0
+    for epoch in range(1, num_epochs + 1):
+        train_loss = 0
         correct = 0
         total = 0
         for x, y in tqdm(enumerate(train_loader)):
             x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
             outputs = model(x)
             pooled_output = torch.mean(outputs, dim=1)
             pred = model.classifier(pooled_output)
+
+            optimizer.zero_grad()
             loss = criterion(pred.squeeze(), y)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
-            predicted = (torch.sigmoid(pred) > 0.5).float()
+
+            train_loss += loss.item()
             total += y.size(0)
+            predicted = (torch.sigmoid(pred) > 0.5).float()
             correct += (predicted.squeeze() == y).sum().item()
             
-        avg_loss = total_loss / len(train_loader)
-        accuracy = 100 * correct / total
-        test_accuracy = evaluate_model(model, test_loader, device)
-        msg = f"[+] Epoch {epoch} loss: {avg_loss:.4f} Train Acc {accuracy:.2f}% Test Acc: {test_accuracy:.2f}%"
-        with open(os.path.join(save_dir, f"emft-{freeze_type}.txt"), "a", encoding="utf-8") as f:
-            f.write(msg + "\n")
-        print(msg)
+        train_loss = train_loss / len(train_loader)
+        train_acc = 100 * correct / total
+        test_acc = evaluate_model(model, test_loader, device)
+        print(f"[+] Epoch {epoch} loss: {train_loss:.4f} Train Acc {train_acc:.2f}% Test Acc: {test_acc:.2f}%")
 
-        checkpoint_name = f"epoch_{epoch+1}-loss_{avg_loss:.4f}-train_acc_{accuracy:.2f}-test_acc_{test_accuracy:.2f}-{freeze_type}.pt"
-        checkpoint_path = os.path.join(save_dir, checkpoint_name)
-        torch.save({
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "loss": avg_loss,
-            "test_accuracy": test_accuracy,
-        }, checkpoint_path)
+        save_model_path = os.path.join(save_dir, f"model_{epoch}.pth")
+        torch.save(model.state_dict(), save_model_path)
+        save_model_path_list.append(save_model_path)
+        print(f"[+] Save model into {save_model_path}")
 
-        saved_checkpoints.append(checkpoint_path)
-        if len(saved_checkpoints) > 5:
-            oldest_checkpoint = saved_checkpoints.pop(0)
-            os.remove(oldest_checkpoint)
+        if len(save_model_path_list) > TASK_2_SAVE_MODEL_NUM:
+            remove_model_path = save_model_path_list.pop(0)
+            os.remove(remove_model_path)
+            print(f"[+] Remove {remove_model_path}")
+
     return
 
 def load_pretrained_model(model, checkpoint_path, device):
@@ -124,24 +119,44 @@ def load_pretrained_model(model, checkpoint_path, device):
     model.load_state_dict(model_dict)
     return model
 
-def train_task_2(nproc, nodes, node_rank, master_addr, master_port):
+def run_train_task_2(rank, world_size, nodes, node_rank, master_addr, master_port):
+    dist.init_process_group(
+        backend="nccl",
+        init_method=f"tcp://{master_addr}:{master_port}",
+        world_size=world_size,
+        rank=rank,
+    )
+
     train_dataset = DatasetTaskV2(
         os.path.join(TASK_2_OUTPUT_ROOT, "emotion_train.csv"),
         os.path.join(TASK_2_OUTPUT_ROOT, "token2idx.json"),
     )
-    train_loader = DataLoader(train_dataset, batch_size=TASK_2_BATCH_SIZE, shuffle=True)
     test_dataset = DatasetTaskV2(
         os.path.join(TASK_2_OUTPUT_ROOT, "emotion_test.csv"),
         os.path.join(TASK_2_OUTPUT_ROOT, "token2idx.json"),
     )
-    test_loader = DataLoader(test_dataset, batch_size=TASK_2_BATCH_SIZE, shuffle=False)
-    print(f"Train set size: {len(train_loader.dataset)}")
-    print(f"Test set size: {len(test_loader.dataset)}")
-    vocab = json.load(open(os.path.join(TASK_2_OUTPUT_ROOT, "token2idx.csv"), "r", encoding="utf-8"))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GPTModel(len(vocab)).to(device)
-    model = load_pretrained_model(model, ".checkpoints/best.pt", device)
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+
+    train_loader = DataLoader(train_dataset, batch_size=TASK_2_BATCH_SIZE, sampler=train_sampler)
+    test_loader = DataLoader(test_dataset, batch_size=TASK_2_BATCH_SIZE, sampler=test_sampler)
+
+    token2idx = json.load(open(os.path.join(TASK_2_OUTPUT_ROOT, "token2idx.json"), "r", encoding="utf-8"))
+
+    device = torch.device(f"cuda:{rank}" if torch.cuda.is_available() else "cpu")
+
+    model = GPTModel(
+        len(token2idx),
+        D_MODEL,
+        N_HEADS,
+        N_LAYERS,
+        D_FF,
+        DROPOUT
+    ).to(device)
+
+    model = load_pretrained_model(model, TASK_1_MODEL_PATH, device)
+
     model.classifier = nn.Sequential(
         nn.Dropout(0.5),
         nn.Linear(model.out.out_features, 1)
@@ -149,8 +164,26 @@ def train_task_2(nproc, nodes, node_rank, master_addr, master_port):
 
     freeze_parameters(model, freeze_type=TASK_2_FREEZE_TYPE)
 
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=TASK_2_LEARNING_RATE, weight_decay=1e-2)
+    model = DDP(model, device_ids=[rank])
+
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=TASK_2_LEARNING_RATE,
+        weight_decay=1e-2
+    )
     criterion = nn.BCEWithLogitsLoss()
-    
-    train_model(model, train_loader, test_loader, optimizer, criterion, device, TASK_2_NUM_EPOCHS, TASK_2_SAVE_ROOT, 0, freeze_type=TASK_2_FREEZE_TYPE)
+
+    train_model(model, train_loader, test_loader, optimizer, criterion, device, TASK_2_NUM_EPOCHS, TASK_2_SAVE_ROOT)
+
+    dist.destroy_process_group()
+    return
+
+def train_task_2(nproc, nodes, node_rank, master_addr, master_port):
+    world_size = nproc * nodes
+    mp.spawn(
+        run_train_task_2,
+        args=(world_size, nodes, node_rank, master_addr, master_port),
+        nprocs=nproc,
+        join=True
+    )
     return

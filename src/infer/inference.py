@@ -34,10 +34,10 @@ def generate(model, token2idx, idx2token, input_text, sampler, device, max_lengt
             outputs = model(input_ids)
             next_token_logits = outputs[0, -1, :]
             probs = F.softmax(next_token_logits, dim=-1)
-            start_time = time.perf_counter()
+            # start_time = time.perf_counter()
             next_token_id = sampler.apply(probs)
-            end_time = time.perf_counter()
-            print(f"time: {end_time - start_time}")
+            # end_time = time.perf_counter()
+            # print(f"time: {end_time - start_time}")
             tokens.append(next_token_id)
             input_ids = torch.tensor([tokens], dtype=torch.long).to(device)
             if next_token_id in stop_token:

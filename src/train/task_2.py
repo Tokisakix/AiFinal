@@ -51,7 +51,7 @@ def freeze_parameters(model, freeze_type="all"):
         for param in model.parameters():
             param.requires_grad = False
         for name, param in model.named_parameters():
-            if "layers.5" in name:
+            if "module.layers.5" in name:
                 param.requires_grad = True
         for param in model.classifier.parameters():
             param.requires_grad = True

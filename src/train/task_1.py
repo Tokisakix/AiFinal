@@ -5,9 +5,10 @@ from torch import nn
 from tqdm import tqdm
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from src.dataset import DatasetTaskV1
 from src.model import GPTModel
@@ -26,7 +27,7 @@ from src.setting import (
     DROPOUT,
 )
 
-def train_model(rank, model, train_loader, optimizer, criterion, device, num_epochs, save_dir):
+def train_model(rank, model, train_loader, optimizer, criterion, scaler, device, num_epochs, save_dir):
     if rank == 0 and not os.path.exists(save_dir):
         os.makedirs(save_dir)
     save_model_path_list = []
@@ -36,12 +37,15 @@ def train_model(rank, model, train_loader, optimizer, criterion, device, num_epo
         total_loss = 0
         for x, y in tqdm(train_loader):
             x, y = x.to(device), y.to(device)
-
             optimizer.zero_grad()
-            output = model(x)
-            loss = criterion(output.view(-1, output.size(-1)), y.view(-1))
-            loss.backward()
-            optimizer.step()
+            
+            with autocast():
+                output = model(x)
+                loss = criterion(output.view(-1, output.size(-1)), y.view(-1))
+            
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             total_loss += loss.item()
 
@@ -94,11 +98,12 @@ def run_train_task_1(rank, world_size, nodes, node_rank, master_addr, master_por
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=TASK_1_LEARNING_RATE)
     criterion = nn.CrossEntropyLoss(ignore_index=token2idx["<pad>"])
+    scaler = GradScaler()
 
     if not os.path.exists(TASK_1_SAVE_ROOT):
         os.makedirs(TASK_1_SAVE_ROOT)
 
-    train_model(rank, model, train_loader, optimizer, criterion, device, TASK_1_NUM_EPOCHS, TASK_1_SAVE_ROOT)
+    train_model(rank, model, train_loader, optimizer, criterion, scaler, device, TASK_1_NUM_EPOCHS, TASK_1_SAVE_ROOT)
 
     dist.destroy_process_group()
     return

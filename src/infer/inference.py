@@ -1,7 +1,10 @@
 import os
 import json
+import time
 import torch
 import torch.nn.functional as F
+import torch.quantization
+from torch.quantization import quantize_dynamic
 
 from .sampler import Sampler
 from src.model import GPTInferModel
@@ -11,6 +14,7 @@ from src.setting import (
     INFER_TEMPERATURE,
     INFER_TOP_K,
     INFER_TOP_P,
+    INFER_DEVICE,
 )
 
 def load_vocab(vocab_path):
@@ -19,19 +23,24 @@ def load_vocab(vocab_path):
     idx2token = {idx: token for token, idx in token2idx.items()}
     return token2idx, idx2token
 
-def generate(model, token2idx, idx2token, input_text, sampler, device, max_length=16):
+def generate(model, token2idx, idx2token, input_text, sampler, device, max_length=64):
     model.eval()
     tokens = [token2idx.get(char, token2idx["<unk>"]) for char in input_text]
+    input_ids = torch.tensor([tokens], dtype=torch.long).to(device)
+    stop_token = [token2idx[token] for token in ["<sep>", "。", "？", "！"]]
 
     with torch.no_grad():
         for _ in range(max_length):
-            input_ids = torch.tensor([tokens], dtype=torch.long).to(device)
             outputs = model(input_ids)
-            next_token_logits = outputs[:, -1, :]
+            next_token_logits = outputs[0, -1, :]
             probs = F.softmax(next_token_logits, dim=-1)
+            start_time = time.perf_counter()
             next_token_id = sampler.apply(probs)
+            end_time = time.perf_counter()
+            print(f"time: {end_time - start_time}")
             tokens.append(next_token_id)
-            if next_token_id == token2idx["<sep>"]:
+            input_ids = torch.tensor([tokens], dtype=torch.long).to(device)
+            if next_token_id in stop_token:
                 break
 
     generated_tokens = input_ids[0].tolist()
@@ -41,10 +50,20 @@ def generate(model, token2idx, idx2token, input_text, sampler, device, max_lengt
 
 def infer():
     token2idx, idx2token = load_vocab(os.path.join(TASK_1_OUTPUT_ROOT, "token2idx.json"))
-    device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
+    device = INFER_DEVICE
 
     model = GPTInferModel(len(token2idx)).to(device)
     model.load_state_dict(torch.load(TASK_1_MODEL_PATH, map_location=device, weights_only=True))
+    if device == "cpu":
+        model = quantize_dynamic(
+            model,
+            {torch.nn.Linear},
+            dtype=torch.qint8
+        )
+        model.to(device)
+    elif "cuda" in device:
+        model = model.half()
+        model = torch.compile(model)
     sampler = Sampler(INFER_TEMPERATURE, INFER_TOP_K, INFER_TOP_P)
 
     try:

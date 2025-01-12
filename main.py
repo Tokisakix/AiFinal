@@ -1,8 +1,8 @@
 import argparse
 
-from src.dataset import process_task_1_data, process_task_2_data
-from src.train import train_task_1, train_task_2
 from src.infer import infer
+from src.train import train_task_1, train_task_2
+from src.dataset import process_task_1_data, process_task_2_data
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
